@@ -1,0 +1,16 @@
+# Grafana datasource provisioning — auto-configures Loki on startup
+# so you don't have to add it manually in the UI.
+#
+# Grafana reads files from /etc/grafana/provisioning/datasources/ at boot.
+# compose.yml mounts ./provisioning → /etc/grafana/provisioning
+
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    # "loki" resolves to the container name inside the Docker network
+    url: http://loki:3100
+    isDefault: true
+    editable: true

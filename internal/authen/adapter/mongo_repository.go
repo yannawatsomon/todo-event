@@ -94,6 +94,37 @@ func (r *MongoRepository) FindCredentialByEmail(ctx context.Context, email strin
 	return mo.Ok(cred)
 }
 
+// FindCredentialByUserID looks up a credential by the onboarding user ID.
+// The user_id field is set during ActivateUser() when the onboarding service
+// fires user.activated. It links the auth credential back to the onboarding user.
+func (r *MongoRepository) FindCredentialByUserID(ctx context.Context, userID string) mo.Result[domain.Credential] {
+	db, err := r.db()
+	if err != nil {
+		return mo.Err[domain.Credential](err)
+	}
+	var cred domain.Credential
+	if err := db.Collection("auth_credentials").FindOne(ctx, bson.D{{Key: "user_id", Value: userID}}).Decode(&cred); err != nil {
+		return mo.Err[domain.Credential](err)
+	}
+	return mo.Ok(cred)
+}
+
+// UpdateCredentialEmail replaces the email field on the credential document
+// identified by user_id. This is a targeted $set — it does NOT touch the
+// password hash or any other field, so existing sessions remain valid.
+func (r *MongoRepository) UpdateCredentialEmail(ctx context.Context, userID, newEmail string) mo.Result[struct{}] {
+	db, err := r.db()
+	if err != nil {
+		return mo.Err[struct{}](err)
+	}
+	filter := bson.D{{Key: "user_id", Value: userID}}
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "email", Value: newEmail}}}}
+	if _, err := db.Collection("auth_credentials").UpdateOne(ctx, filter, update); err != nil {
+		return mo.Err[struct{}](err)
+	}
+	return mo.Ok(struct{}{})
+}
+
 func (r *MongoRepository) UpsertSession(ctx context.Context, session domain.Session) mo.Result[struct{}] {
 	db, err := r.db()
 	if err != nil {

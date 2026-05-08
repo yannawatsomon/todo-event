@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    // Target modern Node.js — no need for old JS compatibility
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    // Strict type checking — catches bugs early
+    "strict": true,
+
+    // Allow importing JSON files directly
+    "resolveJsonModule": true,
+
+    // Output directory (not used by tsx at runtime, but useful for reference)
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    // Skip type checking on node_modules for faster builds
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

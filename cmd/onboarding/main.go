@@ -46,7 +46,8 @@ func fakeCreditScore(email string) (int, bool) {
 func main() {
 	mysqlDSN := os.Getenv("MYSQL_DSN")
 	if mysqlDSN == "" {
-		mysqlDSN = "todoe:todoe@tcp(localhost:3306)/todoe_onboarding?parseTime=true&multiStatements=true"
+		// Port 3307 — local MySQL84 occupies 3306, Docker MySQL is on 3307
+		mysqlDSN = "todoe:todoe@tcp(localhost:3307)/todoe_onboarding?parseTime=true&multiStatements=true"
 	}
 	mongoURI := os.Getenv("MONGO_URI")
 	if mongoURI == "" {
@@ -141,8 +142,9 @@ func main() {
 		return nil
 	})
 	userBus.Subscribe(userdomain.EventContactUpdated, func(_ context.Context, e event.Event) error {
-		user, _ := e.Payload.(userdomain.User)
-		slog.Info("contact updated", "user_id", user.ID, "name", user.Name, "email", user.Email)
+		// Payload is ContactUpdatedPayload (not domain.User) — see UpdateContact()
+		p, _ := e.Payload.(userdomain.ContactUpdatedPayload)
+		slog.Info("contact updated", "user_id", p.UserID, "name", p.Name, "email", p.Email)
 		return nil
 	})
 

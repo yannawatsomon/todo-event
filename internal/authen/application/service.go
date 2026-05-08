@@ -75,6 +75,36 @@ func (s *Service) ActivateUser(ctx context.Context, userID, email, name string) 
 	return mo.Ok(cred)
 }
 
+// UpdateEmail syncs a new email into the credential when the user updates their
+// contact info in the onboarding service.
+//
+// Flow:
+//   user PATCH /users/:id (onboarding)
+//     → UpdateContact() publishes user.contact_updated
+//     → RabbitMQ user.events → cmd/api consumer
+//     → UpdateEmail() called here
+//     → auth_credentials.email updated in MongoDB
+//
+// After this, the user can log in with their new email immediately.
+// Existing sessions are NOT invalidated — the token stays valid.
+func (s *Service) UpdateEmail(ctx context.Context, userID, newEmail string) mo.Result[domain.Credential] {
+	if newEmail == "" {
+		return mo.Err[domain.Credential](ErrInvalidCredentials)
+	}
+	// Verify the credential exists before attempting the update
+	current := s.repo.FindCredentialByUserID(ctx, userID)
+	if current.IsError() {
+		return mo.Err[domain.Credential](current.Error())
+	}
+	if r := s.repo.UpdateCredentialEmail(ctx, userID, newEmail); r.IsError() {
+		return mo.Err[domain.Credential](r.Error())
+	}
+	updated := current.MustGet()
+	updated.Email = newEmail
+	slog.Info("auth: credential email updated", "user_id", userID, "new_email", newEmail)
+	return mo.Ok(updated)
+}
+
 func (s *Service) Login(ctx context.Context, email, password string) mo.Result[domain.Session] {
 	cred := s.repo.FindCredentialByEmail(ctx, email)
 	if cred.IsError() {

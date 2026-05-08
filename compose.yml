@@ -38,7 +38,7 @@ services:
     container_name: todoe-mysql
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: todoe_onboarding
@@ -96,9 +96,19 @@ services:
         condition: service_healthy
 
   audit:
+    # ── Node.js audit service (cmd/audit-node) ────────────────────────────────
+    # Replaced from the original Go service (cmd/audit/Dockerfile).
+    # The Go source at cmd/audit/ is preserved — only this compose entry changed.
+    #
+    # Responsibilities (identical to the Go version):
+    #   - Subscribe to "task.events"       → push every task event to Loki
+    #   - Subscribe to "onboarding.events" → push every user/onboarding event to Loki
+    #
+    # To revert to the Go version, change the dockerfile line back to:
+    #   dockerfile: cmd/audit/Dockerfile
     build:
       context: .
-      dockerfile: cmd/audit/Dockerfile
+      dockerfile: cmd/audit-node/Dockerfile
     container_name: todoe-audit
     restart: unless-stopped
     environment:

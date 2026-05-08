@@ -122,7 +122,13 @@ func (s *Service) UpdateContact(ctx context.Context, id, name, email, bio string
 	if r := s.repo.Append(ctx, id, domain.EventContactUpdated, payload); r.IsError() {
 		return mo.Err[domain.User](r.Error())
 	}
-	s.publisher.Publish(ctx, event.Event{Type: domain.EventContactUpdated, Payload: next})
+	// Publish ContactUpdatedPayload (not the User struct) so downstream consumers
+	// like cmd/api can unmarshal p.UserID correctly via the json:"user_id" tag.
+	//
+	// Previously this published `next` (domain.User) which has json:"id" not
+	// json:"user_id" — causing cmd/api to unmarshal UserID as "" and fail to
+	// find the credential in auth_credentials.
+	s.publisher.Publish(ctx, event.Event{Type: domain.EventContactUpdated, Payload: payload})
 	return mo.Ok(next)
 }
 

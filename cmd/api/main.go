@@ -94,17 +94,52 @@ func main() {
 	authenHandler := authenhttp.NewHandler(authenService)
 
 	// user.activated arrives from cmd/onboarding via RabbitMQ → create auth credential
+	// user.contact_updated arrives from cmd/onboarding via RabbitMQ → sync email change
+	//
+	// Both events travel on the same UserExchange fanout, so a single Subscribe()
+	// call receives all of them. We switch on msg.Type to route each one.
+	//
+	// Why user.contact_updated needs handling:
+	//   When a user changes their email via PATCH /users/:id (onboarding service),
+	//   UpdateContact() publishes user.contact_updated to UserExchange.
+	//   Without this handler, auth_credentials would keep the old email forever
+	//   and the user could no longer log in with their new email.
 	if err := messaging.Subscribe(ch, messaging.UserExchange, messaging.QueueAuthenUserEvents, func(msg messaging.Message) {
-		if msg.Type != userdomain.EventUserActivated {
-			return
-		}
-		var p userdomain.UserActivatedPayload
-		if err := json.Unmarshal(msg.Payload, &p); err != nil {
-			slog.Error("api: user.activated unmarshal", "err", err)
-			return
-		}
-		if r := authenService.ActivateUser(context.Background(), p.UserID, p.Email, p.Name); r.IsError() {
-			slog.Error("api: user.activated credential creation failed", "err", r.Error())
+		switch msg.Type {
+
+		// ── user.activated ────────────────────────────────────────────────
+		// Fired by CompleteProfile() in cmd/onboarding.
+		// Creates a new credential with a temp password; logs the temp password
+		// to stdout so the user can copy it for first login.
+		case userdomain.EventUserActivated:
+			var p userdomain.UserActivatedPayload
+			if err := json.Unmarshal(msg.Payload, &p); err != nil {
+				slog.Error("api: user.activated unmarshal", "err", err)
+				return
+			}
+			if r := authenService.ActivateUser(context.Background(), p.UserID, p.Email, p.Name); r.IsError() {
+				slog.Error("api: user.activated credential creation failed", "err", r.Error())
+			}
+
+		// ── user.contact_updated ──────────────────────────────────────────
+		// Fired by UpdateContact() in cmd/onboarding when user changes email/name/bio.
+		// We only care about the email field — update the credential so the user
+		// can log in with their new email immediately.
+		//
+		// Note: a user can call PATCH /users/:id before completing onboarding
+		// (before user.activated fires). In that case no credential exists yet
+		// and the update is a no-op — logged as a warning, not an error.
+		case userdomain.EventContactUpdated:
+			var p userdomain.ContactUpdatedPayload
+			if err := json.Unmarshal(msg.Payload, &p); err != nil {
+				slog.Error("api: user.contact_updated unmarshal", "err", err)
+				return
+			}
+			if r := authenService.UpdateEmail(context.Background(), p.UserID, p.Email); r.IsError() {
+				// "no documents in result" means the user hasn't activated yet — not a real error
+				slog.Warn("api: user.contact_updated email sync skipped (no credential yet)",
+					"user_id", p.UserID, "err", r.Error())
+			}
 		}
 	}); err != nil {
 		log.Fatal("rabbit subscribe authen.user.events:", err)
